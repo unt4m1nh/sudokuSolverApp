@@ -1,10 +1,9 @@
+import math
 import time
 import pycosat
+import signal
 
 from tkinter import *
-from tkinter.ttk import Progressbar
-from tkinter.ttk import Combobox
-from tkinter.ttk import Notebook
 from tkinter import filedialog as fd
 import tkinter.font
 
@@ -102,64 +101,70 @@ class Home():
 
         data = open(filename)
         grid_1 = []
-        for i in range(0, 9):
+        size = sum(1 for line in open(filename))
+        for i in range(0, size):
             a = []
-            for j in range(0, 10):
+            for j in range(0, 2*size):
                 tmp = data.read(1)
-                if tmp != '\n' and tmp != '':
+                if tmp != '\n' and tmp != ' ' and tmp != '':
                     a.append(int(tmp))
             grid_1.append(a)
-
         grid_2 = grid_1
 
         def value(i, j, d):
-            return 9 * (9 * (i - 1) + (j - 1)) + d
+            return size * (size * (i - 1) + (j - 1)) + d
 
         def bi_normal():
             # Reduces Sudoku problem to a SAT clauses
             def sudoku_clauses():
                 res = []
                 # for all cells, ensure that the each cell:
-                for i in range(1, 10):
-                    for j in range(1, 10):
+                for i in range(1, size + 1):
+                    for j in range(1, size + 1):
                         # denotes (at least) one of the 9 digits (1 clause)
-                        res.append([value(i, j, d) for d in range(1, 10)])
+                        res.append([value(i, j, d) for d in range(1, size + 1)])
                         # does not denote two different digits at once (36 clauses)
                         for d in range(1, 10):
-                            for dp in range(d + 1, 10):
+                            for dp in range(d + 1, size + 1):
                                 res.append([-value(i, j, d), -value(i, j, dp)])
 
                 def valid(cells):
                     for i, xi in enumerate(cells):
                         for j, xj in enumerate(cells):
                             if i < j:
-                                for d in range(1, 10):
+                                for d in range(1, size + 1):
                                     res.append([-value(xi[0], xi[1], d), -value(xj[0], xj[1], d)])
 
                 # ensure rows and columns have distinct values
-                for i in range(1, 10):
-                    valid([(i, j) for j in range(1, 10)])
-                    valid([(j, i) for j in range(1, 10)])
+                for i in range(1, size + 1):
+                    valid([(i, j) for j in range(1, size + 1)])
+                    valid([(j, i) for j in range(1, size + 1)])
+
+                m = int(math.sqrt(size))
+                box = []
+                for i in range(0, size):
+                    if i % m == 0:
+                        box.append(i + 1)
 
                 # ensure 3x3 sub-grids "regions" have distinct values
-                for i in 1, 4, 7:
-                    for j in 1, 4, 7:
-                        valid([(i + k % 3, j + k // 3) for k in range(9)])
+                for i in box:
+                    for j in box:
+                        valid([(i + k % m, j + k // m) for k in range(size)])
 
                 return res
 
             def solve_clause(grid):
                 # solve a Sudoku problem
                 clauses = sudoku_clauses()
-                for i in range(1, 10):
-                    for j in range(1, 10):
+                for i in range(1, size + 1):
+                    for j in range(1, size + 1):
                         d = grid[i - 1][j - 1]
                         # For each digit already known, a clause (with one literal).
                         if d:
                             clauses.append([value(i, j, d)])
 
                 # Print number of variables in Binomial's case
-                self.binomalVariables.set(str(729))
+                self.binomalVariables.set(str(size * size * size))
 
                 # Print number SAT clause
                 numclause = len(clauses)
@@ -175,12 +180,12 @@ class Home():
 
                 def read_cell(i, j):
                     # return the digit of cell i, j according to the solution
-                    for d in range(1, 10):
+                    for d in range(1, size + 1):
                         if value(i, j, d) in sol:
                             return d
 
-                for i in range(1, 10):
-                    for j in range(1, 10):
+                for i in range(1, size + 1):
+                    for j in range(1, size + 1):
                         grid[i - 1][j - 1] = read_cell(i, j)
 
             solve_clause(grid_1)
@@ -189,15 +194,15 @@ class Home():
             # Reduces Sudoku problem to a SAT clauses
             def sudoku_clauses():
                 res = []
-                add = 729
+                add = size * size * size
 
                 def valid(cells):
-                    for d in range(1, 10):
-                        for pos in range(0, 9):
+                    for d in range(1, size + 1):
+                        for pos in range(0, size):
                             if pos == 0:
                                 res.append([-value(cells[pos][0], cells[pos][1], d), value(cells[pos][0],
                                                                                            cells[pos][1], d) + add])
-                            elif pos == 8:
+                            elif pos == size - 1:
                                 res.append([-value(cells[pos][0], cells[pos][1], d), -(value(cells[pos - 1][0],
                                                                                              cells[pos - 1][1],
                                                                                              d) + add)])
@@ -211,41 +216,47 @@ class Home():
                                                                                              d) + add)])
 
                 # for all cells, ensure that each cell:
-                for i in range(1, 10):
-                    for j in range(1, 10):
+                for i in range(1, size + 1):
+                    for j in range(1, size + 1):
                         # denotes (at least) one of the 9 digits (1 clause)
-                        res.append([value(i, j, d) for d in range(1, 10)])
+                        res.append([value(i, j, d) for d in range(1, size + 1)])
                         # does not denote two different digits at once (36 clauses)
                         res.append([-value(i, j, 1), value(i, j, 1) + add])
-                        for d in range(2, 9):
+                        for d in range(2, size):
                             res.append([-value(i, j, d), value(i, j, d) + add])
                             res.append([-(value(i, j, d - 1) + add), value(i, j, d) + add])
                             res.append([-value(i, j, d), -(value(i, j, d - 1) + add)])
-                        res.append([-value(i, j, 9), -(value(i, j, 8) + add)])
+                        res.append([-value(i, j, size), -(value(i, j, size - 1) + add)])
 
-                add += 729
+                add += size * size * size
                 # does not denote that two same digit at a row
-                for i in range(1, 10):
-                    valid([(i, j) for j in range(1, 10)])
+                for i in range(1, size + 1):
+                    valid([(i, j) for j in range(1, size + 1)])
 
-                add += 729
+                add += size * size * size
                 # does not denote that two same digit at a column
-                for j in range(1, 10):
-                    valid([(i, j) for i in range(1, 10)])
+                for j in range(1, size + 1):
+                    valid([(i, j) for i in range(1, size + 1)])
 
-                add += 729
+                add += size * size * size
                 # does not denote that two same digit at a 3x3 box
-                for i in 1, 4, 7:
-                    for j in 1, 4, 7:
-                        valid([(i + k % 3, j + k // 3) for k in range(9)])
+                m = int(math.sqrt(size))
+                box = []
+                for i in range(0, size):
+                    if i % m == 0:
+                        box.append(i + 1)
+
+                for i in box:
+                    for j in box:
+                        valid([(i + k % m, j + k // m) for k in range(size)])
 
                 return res
 
             def solve_clause(grid):
                 # solve a Sudoku problem
                 clauses = sudoku_clauses()
-                for i in range(1, 10):
-                    for j in range(1, 10):
+                for i in range(1, size + 1):
+                    for j in range(1, size + 1):
                         d = grid[i - 1][j - 1]
                         # For each digit already known, a clause (with one literal).
                         if d:
@@ -256,25 +267,29 @@ class Home():
                 self.SEENumClause.set(str(numclause))
 
                 # Print number of variables in SEE encoding's case
-                self.SEENumVariable.set(str(729 + (729 - 1)*4))
+                self.SEENumVariable.set(str(size*size*size + (size*size*size - 1)*4))
 
-                # solve the SAT problem
-                start = time.time()
-                sol = set(pycosat.solve(clauses))
-                end = time.time()
+                if size < 25:
+                    # solve the SAT problem
+                    start = time.time()
+                    sol = set(pycosat.solve(clauses))
+                    end = time.time()
 
-                # Print solving time in SEE encoding's case
-                self.SEETime.set(str(round((end - start) * 1000, 5)) + " (ms)")
+                    # Print solving time in SEE encoding's case
+                    self.SEETime.set(str(round((end - start) * 1000, 5)) + " (ms)")
 
-                def read_cell(i, j):
-                    # return the digit of cell i, j according to the solution
-                    for d in range(1, 10):
-                        if value(i, j, d) in sol:
-                            return d
+                    def read_cell(i, j):
+                        # return the digit of cell i, j according to the solution
+                        for d in range(1, size + 1):
+                            if value(i, j, d) in sol:
+                                return d
 
-                for i in range(1, 10):
-                    for j in range(1, 10):
-                        grid[i - 1][j - 1] = read_cell(i, j)
+                    for i in range(1, size + 1):
+                        for j in range(1, size + 1):
+                            grid[i - 1][j - 1] = read_cell(i, j)
+
+                else:
+                    self.SEETime.set("Timeout")
 
             solve_clause(grid_2)
 
@@ -282,14 +297,16 @@ class Home():
         sequential_encounter()
 
         out_path = 'venv/out.txt'
-        with open(out_path) as f:
-            print(f.read())
 
-        with open(out_path, mode='w') as f:
-            for i in range(0, 9):
-                for j in range(0, 9):
-                    f.write(str(grid_1[i][j]) + ' ')
-                f.write('\n')
+        if grid_1[0][0] is not None:
+            with open(out_path, mode='w') as f:
+                for i in range(0, size):
+                    for j in range(0, size):
+                        f.write(str(grid_1[i][j]) + ' ')
+                    f.write('\n')
+        else:
+            with open(out_path, mode='w') as f:
+                f.write('Problem unable to solve')
 
 
 a = Home(0)
